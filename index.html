@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PdfLens</title>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--line:#232c3d;--fg:#dbe4f0;--dim:#7d8ba1;--acc:#c792ea;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+main{max-width:760px;margin:0 auto;padding:48px 22px}
+h1{font-size:30px;margin:0 0 6px}
+h1 span{color:var(--acc)}
+.tag{color:var(--dim);margin:0 0 26px}
+a{color:var(--acc)}
+.cta{display:inline-block;background:var(--acc);color:#1a0f24;font-weight:600;padding:11px 22px;border-radius:10px;text-decoration:none;margin:18px 0 30px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+h2{font-size:16px;margin:0 0 8px}
+ul{margin:8px 0;padding-left:20px}
+li{margin:4px 0}
+code{background:#0e131d;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font:13px ui-monospace,Menlo,Consolas,monospace}
+.dim{color:var(--dim)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Pdf<span>Lens</span></h1>
+  <p class="tag">Is this PDF broken, encrypted, or hiding something? PdfLens opens the file's skeleton - version, page count, every indirect object, document metadata, and encryption status - without a PDF viewer and without uploading anything.</p>
+  <a class="cta" href="app.html">Open PdfLens</a>
+  <div class="card">
+    <h2>What it reads</h2>
+    <ul>
+      <li>Header version, file size, %%EOF integrity (catches truncated downloads)</li>
+      <li>Full indirect-object map: number, generation, offset, /Type, /Subtype, stream presence</li>
+      <li>Page count from the page tree root /Count</li>
+      <li>Trailer: /Root, /Info, /Encrypt, /Size</li>
+      <li>Document info: title, author, subject, keywords, creator, producer (literal and hex strings, escapes, UTF-16BE)</li>
+      <li>Encryption detection - and honest labeling that encrypted strings stay ciphertext</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2>Why trust it</h2>
+    <p class="dim">The JavaScript engine is checked field-by-field against <a href="https://pypdf.readthedocs.io/">pypdf</a> in <code>tests/run_tests.js</code>: 47 assertions over a five-file corpus - a 3-page document with metadata, a metadata-rich file, a 10-page document, an AES-256 encrypted document, and a truncated file that must produce a warning. Header/EOF facts are checked independently against the raw bytes.</p>
+  </div>
+  <div class="card">
+    <h2>Limits</h2>
+    <p class="dim">Reads structure, not content: no page rendering, no text extraction, no decryption. Page count comes from the page-tree root /Count (correct for well-formed files). Object streams and xref streams (PDF 1.5+) are scanned by object pattern rather than decompressed, so heavily compressed modern files may show a partial object map - the engine says what it found, not more.</p>
+  </div>
+  <p class="dim">Part of the app factory. <a href="https://github.com/iLanis-agent/pdflens">source</a></p>
+</main>
+</body>
+</html>
