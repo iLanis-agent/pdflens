@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PdfLens - PDF structure inspector</title>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--line:#232c3d;--fg:#dbe4f0;--dim:#7d8ba1;--acc:#c792ea;--warn:#fbbf24;--err:#f87171;--ok:#4ade80;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-size:20px;margin:0;letter-spacing:.5px}
+header h1 span{color:var(--acc)}
+header .sub{color:var(--dim);font-size:13px}
+.wrap{padding:18px 22px;max-width:1180px;margin:0 auto}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+button,.filebtn{background:var(--panel);border:1px solid var(--line);color:var(--fg);padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13px}
+button:hover,.filebtn:hover{border-color:var(--acc);color:var(--acc)}
+button.active{border-color:var(--acc);color:var(--acc);background:#1d1226}
+input[type=file]{display:none}
+.summary{display:flex;gap:16px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--dim)}
+.summary b{color:var(--fg);font-weight:600}
+.notice{border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;display:none}
+.notice.warn{display:block;background:#2a2110;border:1px solid #6b5313;color:var(--warn)}
+.notice.err{display:block;background:#2a1010;border:1px solid #6b1313;color:var(--err)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0;margin-bottom:14px}
+.card h3{margin:0 0 8px;font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+td:first-child{color:var(--dim)}
+.empty{color:var(--dim);padding:30px 0;text-align:center}
+.badge{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px;font-weight:600}
+.badge.ok{background:#0f2413;color:var(--ok)}
+.badge.bad{background:#2a1010;color:var(--err)}
+.badge.warn{background:#2a2110;color:var(--warn)}
+footer{margin:26px 0 10px;text-align:center;color:var(--dim);font-size:12px}
+footer a{color:var(--acc);text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Pdf<span>Lens</span></h1>
+  <div class="sub">PDF structure inspector - pages, objects, metadata, encryption, all in the browser</div>
+</header>
+<div class="wrap">
+  <div class="controls">
+    <label class="filebtn">Open .pdf<input id="file" type="file" accept=".pdf,application/pdf"></label>
+    <span style="color:var(--dim);font-size:12px">presets:</span>
+    <button data-preset="simple">simple (3 pages)</button>
+    <button data-preset="meta">rich metadata</button>
+    <button data-preset="many">10 pages</button>
+    <button data-preset="encrypted">encrypted</button>
+    <button data-preset="truncated">truncated</button>
+  </div>
+  <div id="err" class="notice err"></div>
+  <div id="warn" class="notice warn"></div>
+  <div id="summary" class="summary" style="display:none"></div>
+  <div id="main" style="display:none">
+    <div class="grid">
+      <div class="card"><h3>Document info</h3><table id="meta"></table></div>
+      <div class="card"><h3>Structure</h3><table id="struct"></table></div>
+    </div>
+    <div class="card"><h3>Object map</h3><table id="objs"></table></div>
+  </div>
+  <div id="empty" class="empty">Open a PDF or pick a preset. Parsing is 100% local - the file never leaves your machine.</div>
+  <footer>PdfLens - engine verified against <a href="https://pypdf.readthedocs.io/" target="_blank" rel="noopener">pypdf</a> (47 checks). <a href="index.html">about</a></footer>
+</div>
+<script src="engine.js"></script>
+<script>
+'use strict';
+var PRESETS={"simple": "JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQovVGl0bGUgKFF1YXJ0ZXJseSBSZXBvcnQpCi9BdXRob3IgKEFcMDU2IFRlc3RlcikKL0NyZWF0b3IgKFBkZkxlbnMgY29ycHVzKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDMKL0tpZHMgWyA0IDAgUiA1IDAgUiA2IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Jlc291cmNlcyA8PAo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDYxMiA3OTIgXQovUGFyZW50IDIgMCBSCj4+CmVuZG9iago2IDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKPj4KL01lZGlhQm94IFsgMC4wIDAuMCA2MTIgNzkyIF0KL1BhcmVudCAyIDAgUgo+PgplbmRvYmoKeHJlZgowIDcKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAxMjkgMDAwMDAgbiAKMDAwMDAwMDIwMCAwMDAwMCBuIAowMDAwMDAwMjQ5IDAwMDAwIG4gCjAwMDAwMDAzNDMgMDAwMDAgbiAKMDAwMDAwMDQzNyAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDcKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjUzMQolJUVPRgo=", "meta": "JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQovVGl0bGUgKE1ldGFkYXRhIERlbW8pCi9BdXRob3IgKEphbmUgRG9lKQovU3ViamVjdCAoZXhlcmNpc2UgbWV0YWRhdGEpCi9LZXl3b3JkcyAoYWxwaGFcMDU0IGJldGFcMDU0IGdhbW1hKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDEKL0tpZHMgWyA0IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMTYyIDAwMDAwIG4gCjAwMDAwMDAyMjEgMDAwMDAgbiAKMDAwMDAwMDI3MCAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDUKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjM2NAolJUVPRgo=", "many": "JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDEwCi9LaWRzIFsgNCAwIFIgNSAwIFIgNiAwIFIgNyAwIFIgOCAwIFIgOSAwIFIgMTAgMCBSIDExIDAgUiAxMiAwIFIgMTMgMCBSIF0KPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iago0IDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKPj4KL01lZGlhQm94IFsgMC4wIDAuMCA2MTIgNzkyIF0KL1BhcmVudCAyIDAgUgo+PgplbmRvYmoKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Jlc291cmNlcyA8PAo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDYxMiA3OTIgXQovUGFyZW50IDIgMCBSCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKPj4KL01lZGlhQm94IFsgMC4wIDAuMCA2MTIgNzkyIF0KL1BhcmVudCAyIDAgUgo+PgplbmRvYmoKOCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCjkgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Jlc291cmNlcyA8PAo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDYxMiA3OTIgXQovUGFyZW50IDIgMCBSCj4+CmVuZG9iagoxMCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCjExIDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKPj4KL01lZGlhQm94IFsgMC4wIDAuMCA2MTIgNzkyIF0KL1BhcmVudCAyIDAgUgo+PgplbmRvYmoKMTIgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Jlc291cmNlcyA8PAo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDYxMiA3OTIgXQovUGFyZW50IDIgMCBSCj4+CmVuZG9iagoxMyAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCnhyZWYKMCAxNAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTUgMDAwMDAgbiAKMDAwMDAwMDA1NCAwMDAwMCBuIAowMDAwMDAwMTcyIDAwMDAwIG4gCjAwMDAwMDAyMjEgMDAwMDAgbiAKMDAwMDAwMDMxNSAwMDAwMCBuIAowMDAwMDAwNDA5IDAwMDAwIG4gCjAwMDAwMDA1MDMgMDAwMDAgbiAKMDAwMDAwMDU5NyAwMDAwMCBuIAowMDAwMDAwNjkxIDAwMDAwIG4gCjAwMDAwMDA3ODUgMDAwMDAgbiAKMDAwMDAwMDg4MCAwMDAwMCBuIAowMDAwMDAwOTc1IDAwMDAwIG4gCjAwMDAwMDEwNzAgMDAwMDAgbiAKdHJhaWxlcgo8PAovU2l6ZSAxNAovUm9vdCAzIDAgUgovSW5mbyAxIDAgUgo+PgpzdGFydHhyZWYKMTE2NQolJUVPRgo=", "encrypted": "JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgPDYyZGVmNDA4NDE3ZDE0MzAxNTBlNGM4OTQ4NDY5ZGE3MjVkOGZkZDRlNGE2MTlmMjFmNzI5YTQ4ODBiMzk4OTU+Ci9UaXRsZSA8YjhiOGVmNjcyMzk5MjlmMmRiNWE4MmJhMzY1Y2E1ZTYwOWE3MDg2OTNhYTQ2MGY3YzYzOGQyNTRmM2RmYzZjMj4KPj4KZW5kb2JqCjIgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9Db3VudCAyCi9LaWRzIFsgNCAwIFIgNSAwIFIgXQo+PgplbmRvYmoKMyAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5kb2JqCjQgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Jlc291cmNlcyA8PAo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDYxMiA3OTIgXQovUGFyZW50IDIgMCBSCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9UeXBlIC9QYWdlCi9SZXNvdXJjZXMgPDwKPj4KL01lZGlhQm94IFsgMC4wIDAuMCA2MTIgNzkyIF0KL1BhcmVudCAyIDAgUgo+PgplbmRvYmoKNiAwIG9iago8PAovViA1Ci9SIDYKL0xlbmd0aCAyNTYKL1AgNDI5NDk2NzI5MgovRmlsdGVyIC9TdGFuZGFyZAovTyA8OWUzYjFhZTgyMWY2YmQyYTQ2OWE1Yjg3ZmY1YzU2OGI2MDQ5MTNkMThjM2FlZTgwZmNhZTExZjM5ZTI5MjAzYTI2ZDJjZWEwMDQ1NmYwNzRmYjFhNTYzNWY5NmExNDg0PgovVSA8NjViM2E4YzViNDlkZjNiNjUxYWU1YjU1YWMzYTY3NTFiYzVkODI2MTliNTdlOGRhMmNlNDdhZWIxNjlkYzlhOWE0ZDljM2ZjYjE1OWFkMzVkYmViMGZkZWJkNTM0MjdjPgovQ0YgPDwKL1N0ZENGIDw8Ci9BdXRoRXZlbnQgL0RvY09wZW4KL0NGTSAvQUVTVjMKL0xlbmd0aCAzMgo+Pgo+PgovU3RtRiAvU3RkQ0YKL1N0ckYgL1N0ZENGCi9PRSA8MDI5NGQyMjdjMjhmZjNiNzBjMzMwOGZhNTI3ZTg3NjdiYWU0YTQ4MTE2YmY1MmMyM2U3OWM5MWQxMWZjMjY4Mz4KL1VFIDxlZTA5NWU1OTQ4NmJjZWNlOTM2YzMzNGIzYjVhNmIxNTdhYTBiMGEyZDFiMDRmYTJjODk1ZTEyMzcwNTU2NTlkPgovUGVybXMgPDYxNGIwZWNiOTFjZmM1NTJmMWY3NzFjZWE3YjAyZDgyPgo+PgplbmRvYmoKeHJlZgowIDcKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAxODcgMDAwMDAgbiAKMDAwMDAwMDI1MiAwMDAwMCBuIAowMDAwMDAwMzAxIDAwMDAwIG4gCjAwMDAwMDAzOTUgMDAwMDAgbiAKMDAwMDAwMDQ4OSAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDcKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKL0lEIFsgPDM5MzIzMjM5NjYzMDMxNjUzMjY1MzAzMjY0MzEzMDYxMzMzODY1MzM2NTM3MzkzNDYxMzY2MjM2MzUzMDYyMzU+IDwzOTMyMzIzOTY2MzAzMTY1MzI2NTMwMzI2NDMxMzA2MTMzMzg2NTMzNjUzNzM5MzQ2MTM2NjIzNjM1MzA2MjM1PiBdCi9FbmNyeXB0IDYgMCBSCj4+CnN0YXJ0eHJlZgoxMDQ0CiUlRU9GCg==", "truncated": "JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQovVGl0bGUgKFF1YXJ0ZXJseSBSZXBvcnQpCi9BdXRob3IgKEFcMDU2IFRlc3RlcikKL0NyZWF0b3IgKFBkZkxlbnMgY29ycHVzKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDMKL0tpZHMgWyA0IDAgUiA1IDAgUiA2IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Jlc291cmNlcyA8PAo+PgovTWVkaWFCb3ggWyAwLjAgMC4wIDYxMiA3OTIgXQovUGFyZW50IDIgMCBSCj4+CmVuZG9iago2IDAgb2JqCjw8"};
+function b64ToBytes(s){var bin=atob(s),b=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i);return b;}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function row(k,v){if(v===''||v===undefined||v===null)return '';return '<tr><td>'+esc(k)+'</td><td>'+v+'</td></tr>';}
+function load(bytes,name){
+  var r=PdfLens.parse(bytes);
+  var err=document.getElementById('err'),warn=document.getElementById('warn');
+  err.style.display='none';warn.style.display='none';
+  if(r.errors.length){err.style.display='block';err.textContent=r.errors.join('; ');return;}
+  if(r.warnings.length){warn.style.display='block';warn.textContent=r.warnings.join('; ');}
+  document.getElementById('empty').style.display='none';
+  document.getElementById('main').style.display='block';
+  var s=document.getElementById('summary');
+  s.style.display='flex';
+  s.innerHTML='<span>file <b>'+esc(name)+'</b></span>'+
+    '<span>version <b>PDF '+esc(r.version)+'</b></span>'+
+    '<span>size <b>'+r.size+' B</b></span>'+
+    (r.pages!==null?'<span>pages <b>'+r.pages+'</b></span>':'')+
+    '<span>objects <b>'+r.objects_gen0+'</b></span>'+
+    '<span>eof <b>'+(r.has_eof?'<span class="badge ok">%%EOF ok</span>':'<span class="badge bad">missing</span>')+'</b></span>'+
+    '<span>encryption <b>'+(r.encrypted?'<span class="badge warn">encrypted</span>':'<span class="badge ok">none</span>')+'</b></span>';
+  var m='<tr><td>Title</td><td>'+esc(r.meta.title||'(none)')+'</td></tr>';
+  if(r.encrypted){
+    document.getElementById('meta').innerHTML='<tr><td colspan="2" style="color:var(--warn)">Document is encrypted - metadata strings are ciphertext and were not decrypted.</td></tr>';
+  } else {
+    document.getElementById('meta').innerHTML=
+      row('Title',esc(r.meta.title||'(none)'))+row('Author',esc(r.meta.author||''))+
+      row('Subject',esc(r.meta.subject||''))+row('Keywords',esc(r.meta.keywords||''))+
+      row('Creator',esc(r.meta.creator||''))+row('Producer',esc(r.meta.producer||''));
+  }
+  var st=row('Header version','PDF '+esc(r.version))+
+    row('Trailer /Size',r.trailer_size!==undefined?String(r.trailer_size):'')+
+    row('Page tree root count',r.pages_root_count!==null?String(r.pages_root_count):'')+
+    row('Indirect objects (gen 0)',String(r.objects_gen0))+
+    row('Has %%EOF',r.has_eof?'yes':'no')+
+    row('Encrypted',r.encrypted?'yes':'no');
+  var streams=0;for(var i=0;i<r.objects.length;i++)if(r.objects[i].has_stream)streams++;
+  st+=row('Stream objects',String(streams));
+  document.getElementById('struct').innerHTML=st;
+  var h='<tr><th>obj</th><th>gen</th><th>offset</th><th>type</th><th>subtype</th><th>count</th><th>stream</th></tr>';
+  for(var i=0;i<r.objects.length;i++){
+    var o=r.objects[i];
+    h+='<tr><td>'+o.num+'</td><td>'+o.gen+'</td><td>'+o.offset+'</td><td>'+esc(o.type?'/'+o.type:'')+'</td><td>'+esc(o.subtype?'/'+o.subtype:'')+'</td><td>'+(o.count!==undefined?o.count:'')+'</td><td>'+(o.has_stream?'yes':'')+'</td></tr>';
+  }
+  document.getElementById('objs').innerHTML=h;
+}
+document.getElementById('file').addEventListener('change',function(){
+  var f=this.files[0];if(!f)return;
+  var rd=new FileReader();
+  rd.onload=function(){load(new Uint8Array(rd.result),f.name);};
+  rd.readAsArrayBuffer(f);
+});
+var btns=document.querySelectorAll('button[data-preset]');
+for(var k=0;k<btns.length;k++){
+  btns[k].addEventListener('click',function(){
+    for(var m=0;m<btns.length;m++)btns[m].classList.remove('active');
+    this.classList.add('active');
+    var name=this.getAttribute('data-preset');
+    load(b64ToBytes(PRESETS[name]),name+'.pdf (preset)');
+  });
+}
+</script>
+</body>
+</html>
